@@ -1,0 +1,19 @@
+# Virtualenv and Python noise
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Editor / session tooling (holds machine-specific absolute paths)
+.claude/
+
+# Cached downloads. Large, and fetch_data.py refetches them on demand.
+# data/course/ is deliberately NOT ignored: the race GPX is an input the
+# pipeline needs, not a cache.
+data/dem/
+data/osm/
+
+# Generated reports and routes; recreate with `python run.py`
+output/
+
+*.log
