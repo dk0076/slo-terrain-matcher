@@ -17,3 +17,6 @@ data/osm/
 output/
 
 *.log
+
+# Web uploads and built routes
+web-work/

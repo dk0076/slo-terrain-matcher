@@ -49,6 +49,8 @@ def replicate(
     point_to_point: bool = False,
     start: tuple[float, float] | None = None,
     refresh: bool = False,
+    on_progress=None,
+    route_name: str | None = None,
 ):
     """Build the closest replica of a course within an area.
 
@@ -70,6 +72,9 @@ def replicate(
         point_to_point: Do not close the route back to the start.
         start: Optional ``(latitude, longitude)`` start point.
         refresh: Ignore cached downloads.
+        on_progress: Optional ``callable(percent, stage)`` for a caller
+            showing progress.
+        route_name: Override the name given to the finished route.
 
     Returns:
         ``(route, chart_path)``. The route is ``None`` if none could be
@@ -90,6 +95,11 @@ def replicate(
     spacing = float(config.analysis.get("sample_spacing_m", 20.0))
     smoothing = int(config.analysis.get("smoothing_samples", 5))
 
+    def report(percent: int, stage: str) -> None:
+        if on_progress is not None:
+            on_progress(percent, stage)
+
+    report(5, "reading the course")
     LOG.info("--- 1/4: reading the course ---")
     profile = course_module.load_course(course_gpx, spacing, smoothing)
     course_miles = profile.total_mi
@@ -101,10 +111,13 @@ def replicate(
         target_miles,
     )
 
+    report(12, "fetching elevation data")
     LOG.info("--- 2/4: fetching elevation and roads for %s ---", area.label)
     dem_path = fetch_data.fetch_dem(config, refresh=refresh)
+    report(22, "fetching roads and paths (the slow part)")
     osm_payload = fetch_data.fetch_osm(config, refresh=refresh)
 
+    report(48, "building the road graph")
     LOG.info("--- 3/4: building the road graph ---")
     edges, _ = analyze.build_edges(osm_payload)
     sampler = analyze.DemSampler(dem_path)
@@ -121,8 +134,12 @@ def replicate(
         recent_memory = int(max(60, min(250, 250 * (12.0 / max(1.0, target_miles)))))
         LOG.info("route memory: %d edges", recent_memory)
 
+    report(60, "searching for the closest route")
     LOG.info("--- 4/4: searching for the closest replica ---")
-    name = f"{course_gpx.stem} replica — {target_miles:g} mi"
+    name = route_name or f"{course_gpx.stem} replica — {target_miles:g} mi"
+
+    def search_progress(fraction: float) -> None:
+        report(60 + int(33 * max(0.0, min(1.0, fraction))), "searching for the closest route")
     built = route_module.build_route(
         graph,
         target,
@@ -137,10 +154,12 @@ def replicate(
         drift_weight=drift_weight,
         close_loop=not point_to_point,
         length_tolerance=(0.97, 1.03),
+        on_progress=search_progress,
     )
     if built is None:
         return None, None
 
+    report(95, "writing the route and chart")
     route_module.write_gpx(built, out_path)
 
     from chart import write_profile_comparison

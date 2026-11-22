@@ -12,6 +12,54 @@ That writes a GPX you can load onto a watch, and tells you how close the match
 actually is: grade error, profile correlation, and climbing against the
 course's own rate for that distance.
 
+## The web version
+
+If you would rather not touch a terminal, there is a page for it:
+
+```bash
+pip install -e ".[web]"
+```
+
+```bash
+python webapp.py
+```
+
+Open http://127.0.0.1:5000, drop in a GPX, click where you run, pick a
+distance. You get the route on a map, the fit statistics, the comparison
+chart and a GPX to download.
+
+To put it somewhere other people can reach:
+
+```bash
+docker build -t terrain-matcher .
+```
+
+```bash
+docker run -p 8000:8000 -v terrain-cache:/data terrain-matcher
+```
+
+**Mount the volume.** Every new search area downloads a DEM clip and an
+Overpass extract. Without a persistent cache every restart refetches all of
+it, which is slow for you and inconsiderate to OpenStreetMap's volunteers.
+
+**Before you expose it publicly**, know what each request costs. A route in a
+new area means an Overpass query that can take forty seconds, a DEM read of
+ten to fifteen megabytes, and up to a couple of minutes of CPU. The app ships
+with a narrow queue (two concurrent builds), a per-address rate limit (five
+builds per five minutes), capped upload size, and bounded radius and
+distance. Those defaults are deliberately conservative: Overpass is a
+volunteer service and a popular page pointed at it without limits will get
+the server blocked. `webapp.py` has them all at the top if you need to adjust
+them. Set `TERRAIN_BEHIND_PROXY=1` when running behind a reverse proxy so the
+rate limiter reads the forwarded address rather than the proxy's.
+
+Uploaded GPX files are parsed with `defusedxml`, so entity expansion and
+external entity resolution are off. A GPX is XML from a stranger, and the
+standard parser will happily expand a few kilobytes of nested entities until
+the process dies.
+
+## Two ways to use it from the terminal
+
 It works in two ways, which answer different questions:
 
 - **`replicate.py`** — *"what single route should I run?"* Builds one whole
@@ -321,6 +369,10 @@ construction.
 ## Project layout
 
 ```
+webapp.py         the web front end (Flask)
+templates/        the page
+static/           its styles and script
+Dockerfile        for deploying the web version
 config.yaml       bbox, targets, scoring weights, output paths
 config.py         typed configuration loading and validation
 area.py           resolve a place name, centre point or bbox into an area

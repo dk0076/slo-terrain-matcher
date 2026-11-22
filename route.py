@@ -540,6 +540,7 @@ def build_route(
     milestone_m: float = 200.0,
     per_node: int = 2,
     length_tolerance: tuple[float, float] = (0.95, 1.08),
+    on_progress=None,
 ) -> Route | None:
     """Grow a route that tracks the course's grade profile.
 
@@ -576,6 +577,9 @@ def build_route(
         per_node: Cap on surviving beams sharing an endpoint.
         length_tolerance: Acceptable finished length, as a fraction of the
             target, once the closing leg is included.
+        on_progress: Optional callable taking a fraction from 0 to 1, called
+            as the search advances. The search is the slow part, so a caller
+            showing a progress bar needs this to say anything useful.
 
     Returns:
         The finished route, or ``None`` if the search died out.
@@ -682,6 +686,9 @@ def build_route(
             score = (beam.cost + rate * to_home) / max(total, 1.0)
             if best is None or score < best[0]:
                 best = (score, beam)
+
+        if on_progress is not None and beams:
+            on_progress(min(1.0, beams[0].distance_m / target_length_m))
 
         if index % 20 == 0 and beams:
             LOG.info(

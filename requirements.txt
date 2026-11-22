@@ -19,3 +19,5 @@ PyYAML>=6.0
 
 # Tests
 pytest>=8.0
+flask>=3.0
+defusedxml>=0.7
