@@ -1,15 +1,32 @@
-# SLO terrain matcher
+# Terrain matcher
 
-Finds running routes in San Luis Obispo whose gradient profiles reproduce
-specific features of the Oakland Marathon course — the steep pitches at miles
-3–6, the bridge climb and descent, the flat finish — so you can train on local
-terrain that feels like the race.
+Give it a race course GPX and somewhere to run, and it builds the closest
+replica it can find on local roads — so you can train on terrain that feels
+like the race.
 
-It pulls the USGS 3DEP elevation model and the OpenStreetMap road network,
-samples elevation along every road and path in the area, and slides a window
-over each profile looking for stretches that match each target's length and
-grade. Output is a ranked table, a map, and GPX tracks you can load onto a
-watch.
+```bash
+python replicate.py --course oakland.gpx --area "San Luis Obispo, CA"
+```
+
+That writes a GPX you can load onto a watch, and tells you how close the match
+actually is: grade error, profile correlation, and climbing against the
+course's own rate for that distance.
+
+It works in two ways, which answer different questions:
+
+- **`replicate.py`** — *"what single route should I run?"* Builds one whole
+  route tracking the course's grade profile from start to finish.
+- **`run.py`** — *"where can I find a 5% pitch?"* Searches every road and path
+  in the area for stretches matching each course feature, and ranks them.
+
+Both pull the USGS 3DEP elevation model and the OpenStreetMap road network for
+whatever area you name.
+
+> **Elevation is United States only.** 3DEP does not cover other countries, so
+> a course abroad has no terrain data to work from. The area is checked up
+> front and refused with a clear message rather than failing mid-download.
+> (The *course* GPX can be from anywhere — it carries its own elevation. Only
+> the place you want to run has to be in the US.)
 
 ## Setup
 
@@ -34,9 +51,54 @@ pip install -r requirements.txt
 > virtual environment somewhere short such as `C:\Users\<you>\.venvs\slo-terrain`
 > and use that interpreter instead.
 
-## Usage
+## Replicating a course
 
-Run the whole pipeline:
+The main entry point. Pick a course and a place:
+
+```bash
+python replicate.py --course oakland.gpx --area "San Luis Obispo, CA"
+```
+
+The replica defaults to the course's own length. Ask for less and it meets the
+course's features in the same order and proportion, at their true grades, over
+a distance you can run on a weeknight:
+
+```bash
+python replicate.py --course oakland.gpx --area "Boulder, CO" --miles 10
+```
+
+**Choosing where**, in order of precision — a place name is geocoded to a
+centre point and `--radius` miles are taken around it (8 by default). Note
+that a geocoder resolves "San Luis Obispo, CA" to the whole *county*, so the
+radius, not the geocoder's own bounding box, is what defines the area:
+
+```bash
+python replicate.py --course race.gpx --area "Boulder, CO" --radius 10
+```
+
+```bash
+python replicate.py --course race.gpx --center 35.28,-120.66 --radius 6
+```
+
+```bash
+python replicate.py --course race.gpx --bbox -120.75,35.15,-120.55,35.35
+```
+
+Other options worth knowing: `--start lat,lon` to begin somewhere other than
+the area centre, `--point-to-point` to skip closing the loop, `--emphasis` to
+change how hard the search chases the course's steep sections, and `--beam`
+to widen the search.
+
+**Reading the result.** The summary reports a profile correlation. Above about
+0.7 the replica tracks the course closely; around 0.4–0.7 it follows the shape
+loosely; below about 0.15 the local terrain simply does not offer a match and
+a different area or distance is the answer. Climbing is reported against what
+the course itself does over the same distance, so a ratio near 1.0 means the
+replica asks the same of your legs.
+
+## Searching for individual features
+
+Run the whole segment-matching pipeline:
 
 ```bash
 python run.py
@@ -226,10 +288,12 @@ construction.
 ```
 config.yaml       bbox, targets, scoring weights, output paths
 config.py         typed configuration loading and validation
+area.py           resolve a place name, centre point or bbox into an area
 geo.py            haversine distance, resampling, bearings
 fetch_data.py     3DEP DEM and OSM acquisition, with caching
 analyze.py        edges, corridors, DEM sampling, window search, scoring
 report.py         CSV, Markdown, GPX and Folium map output
+replicate.py      one command: course GPX + area -> closest replica GPX
 route.py          build whole routes that track the course's grade profile
 validate.py       DEM vs. barometric elevation from FIT files
 course.py         re-measure the targets against the race GPX

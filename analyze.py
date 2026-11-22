@@ -176,7 +176,7 @@ class Corridor:
             return f"unnamed {'/'.join(classes)}"
         if len(names) <= 2:
             return " / ".join(names)
-        return f"{names[0]} → {names[-1]}"
+        return f"{names[0]} to {names[-1]}"
 
     def edges_between(self, start_m: float, end_m: float) -> list[Edge]:
         """Edges overlapping the along-corridor interval ``[start_m, end_m]``."""

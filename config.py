@@ -7,7 +7,7 @@ objects so the rest of the pipeline does not pass raw dictionaries around.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -124,6 +124,42 @@ class Config:
         return path if path.is_absolute() else self.root / path
 
     # -- targets ---------------------------------------------------------
+    def with_area(
+        self,
+        bbox: tuple[float, float, float, float],
+        center: tuple[float, float] | None = None,
+        name: str | None = None,
+    ) -> "Config":
+        """A copy of this config pointed at a different search area.
+
+        Lets the command-line entry points retarget the pipeline without
+        anyone hand-editing ``config.yaml``.
+
+        Args:
+            bbox: ``(west, south, east, north)`` in EPSG:4326.
+            center: Optional ``(latitude, longitude)`` for the proximity
+                bonus and as the route start point.
+            name: Optional human-readable area name for reports.
+
+        Returns:
+            A new :class:`Config`; the original is unchanged.
+        """
+        area = dict(self.area)
+        area["bbox"] = list(bbox)
+        if center is not None:
+            area["reference_point"] = [center[0], center[1]]
+        if name is not None:
+            area["name"] = name
+        return replace(self, area=area)
+
+    def with_course(self, course_gpx: str | Path) -> "Config":
+        """A copy of this config pointed at a different race course GPX."""
+        return replace(self, course_gpx=str(course_gpx))
+
+    def with_routes(self, routes: list[dict[str, Any]]) -> "Config":
+        """A copy of this config with a different set of route specs."""
+        return replace(self, routes=list(routes))
+
     def target(self, key: str) -> Target:
         """Look up a single target by key.
 

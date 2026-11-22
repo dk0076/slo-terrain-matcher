@@ -287,3 +287,20 @@ def test_corridor_label_prefers_street_names():
 
     unnamed = [make_edge(edge_id=0, name="", highway="track")]
     assert "track" in make_corridor(unnamed).label()
+
+
+def test_corridor_label_is_console_safe_on_windows():
+    """Labels must survive a cp1252 console.
+
+    The Windows console encoding cannot represent characters outside cp1252,
+    so a label containing one raises UnicodeEncodeError the moment anything
+    prints it.
+    """
+    edges = [
+        make_edge(edge_id=0, start_node=1, end_node=2, name="First Street"),
+        make_edge(edge_id=1, start_node=2, end_node=3, name="Second Street"),
+        make_edge(edge_id=2, start_node=3, end_node=4, name="Third Street"),
+    ]
+    label = make_corridor(edges).label()
+    assert "First Street" in label and "Third Street" in label
+    label.encode("cp1252")

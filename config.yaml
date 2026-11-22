@@ -186,16 +186,23 @@ routes:
     label: Marathon simulation
     length_mi: 0          # 0 means "the same length as the course"
     loop: true
-    beam_width: 240
+    # 600 beams with 3 per node: a narrower beam collapses onto one street and
+    # the match drops sharply (0.30 at 240/2 versus 0.56 at 600/3 on the same
+    # terrain). Wider costs roughly twice the search time, which is worth it.
+    beam_width: 600
+    per_node: 3
     recent_memory: 60     # laps of a flat corridor are expected at this length
     unpaved_penalty: 0.6
+    feature_emphasis: 0.6
     color: "#6a3d9a"
 
   - key: signature_loop
     label: Signature loop
     length_mi: 8.0
     loop: true
-    beam_width: 300
+    beam_width: 600
+    per_node: 3
     recent_memory: 140    # a short loop should not retrace itself
     unpaved_penalty: 0.9
+    feature_emphasis: 0.6
     color: "#ff7f00"
