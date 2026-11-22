@@ -30,8 +30,9 @@ pip install -r requirements.txt
 > **Windows note.** `rasterio` ships GDAL as bundled DLLs, and Windows refuses
 > to load them when the full path exceeds 260 characters. If `import rasterio`
 > fails with *"DLL load failed ... the filename or extension is too long"*,
-> create the virtual environment somewhere with a short path, for example
-> `C:\Users\<you>\.venvs\slo-terrain`, and use that interpreter.
+> the project is nested too deep — move it nearer the drive root, or create the
+> virtual environment somewhere short such as `C:\Users\<you>\.venvs\slo-terrain`
+> and use that interpreter instead.
 
 ## Usage
 
