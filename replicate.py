@@ -45,6 +45,8 @@ def replicate(
     per_node: int = 3,
     unpaved_penalty: float = 0.9,
     drift_weight: float = 1.0,
+    scenic_weight: float = 0.0,
+    use_parks: bool = False,
     recent_memory: int | None = None,
     point_to_point: bool = False,
     start: tuple[float, float] | None = None,
@@ -66,6 +68,13 @@ def replicate(
         unpaved_penalty: Extra cost per metre of known-unpaved surface.
         drift_weight: How hard to hold the replica to the course's own
             elevation curve. 0 disables the correction.
+        scenic_weight: How much to pay to prefer paths and quiet streets over
+            arterials. This costs profile fidelity, so it is off unless asked
+            for.
+        use_parks: Also fetch parks and open space. Measurably made no
+            difference in testing -- the path and named-trail tags already
+            carry the signal -- and costs an extra Overpass query, so it is
+            off by default.
         recent_memory: How many recent edges the search refuses to reuse.
             ``None`` scales it with the distance: a long route inside a small
             area has to lap, so it needs a shorter memory than a short one.
@@ -120,6 +129,19 @@ def replicate(
     report(48, "building the road graph")
     LOG.info("--- 3/4: building the road graph ---")
     edges, _ = analyze.build_edges(osm_payload)
+
+    # Always scored, even when it is not steering the search, so the summary
+    # can say what you are getting. Without --parks this needs no extra fetch.
+    import pleasant
+
+    report(52, "scoring how pleasant each road is")
+    greenspace = (
+        fetch_data.fetch_greenspace(config, refresh=refresh)
+        if (use_parks and scenic_weight > 0.0)
+        else None
+    )
+    nice = pleasant.score_network(edges, greenspace)
+
     sampler = analyze.DemSampler(dem_path)
     target = route_module.course_target(profile)
     graph = route_module.RoadGraph(edges, sampler, spacing, smoothing)
@@ -152,6 +174,8 @@ def replicate(
         feature_emphasis=emphasis,
         per_node=per_node,
         drift_weight=drift_weight,
+        pleasantness=nice,
+        scenic_weight=scenic_weight,
         close_loop=not point_to_point,
         length_tolerance=(0.97, 1.03),
         on_progress=search_progress,
@@ -160,6 +184,7 @@ def replicate(
         return None, None
 
     report(95, "writing the route and chart")
+    built.pleasantness_scores = nice
     route_module.write_gpx(built, out_path)
 
     from chart import write_profile_comparison
@@ -228,6 +253,12 @@ def print_summary(built, area: Area, course_name: str, out_path: Path) -> None:
     unpaved = built.surface_fractions.get("unpaved", 0.0) * 100
     print(f"  surface           {paved:.0f}% known paved, {unpaved:.0f}% known unpaved")
     print(f"  repeated ground   {built.repeat_fraction * 100:.0f}% of the distance")
+    nice = built.mean_pleasantness(getattr(built, "pleasantness_scores", None))
+    if nice is not None:
+        print(
+            f"  pleasantness      {nice:.2f}  "
+            "(0 is an arterial, 1 is a named park path)"
+        )
     print(f"  closed loop       {'yes' if built.closed_loop else 'no'}")
     if built.names:
         print(f"  streets           {', '.join(built.names[:12])}")
@@ -289,6 +320,23 @@ def main(argv: list[str] | None = None) -> int:
     tuning.add_argument("--per-node", type=int, default=3, help="beam diversity cap")
     tuning.add_argument(
         "--unpaved-penalty", type=float, default=0.9, help="cost per metre of dirt"
+    )
+    tuning.add_argument(
+        "--scenic",
+        type=float,
+        default=0.0,
+        help=(
+            "prefer paths, parks and quiet streets. Try 2.0. This trades "
+            "against how well the profile matches, so it is off by default"
+        ),
+    )
+    tuning.add_argument(
+        "--parks",
+        action="store_true",
+        help=(
+            "also weigh parks and open space. Costs an extra fetch and made "
+            "no measurable difference in testing"
+        ),
     )
     tuning.add_argument(
         "--memory",
@@ -369,6 +417,8 @@ def main(argv: list[str] | None = None) -> int:
             per_node=args.per_node,
             unpaved_penalty=args.unpaved_penalty,
             drift_weight=args.drift,
+            scenic_weight=args.scenic,
+            use_parks=args.parks,
             recent_memory=args.memory,
             point_to_point=args.point_to_point,
             start=start,

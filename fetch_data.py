@@ -432,6 +432,76 @@ def fetch_waterways(
     return None
 
 
+def fetch_greenspace(
+    config: Config, refresh: bool = False
+) -> dict[str, Any] | None:
+    """Fetch parks, reserves and other open space.
+
+    Running through a park is pleasanter than running beside four lanes of
+    traffic, and OSM knows where the parks are. This is the one signal in the
+    pleasantness score that needs data beyond the road network itself.
+
+    Args:
+        config: Loaded configuration.
+        refresh: Re-download even if a cached response exists.
+
+    Returns:
+        The Overpass payload, or ``None`` if every mirror failed. A failure
+        is not fatal; it only costs the park bonus.
+    """
+    cache_dir = config.cache_dir / "osm"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_path = cache_dir / f"greenspace_{_bbox_key(config.bbox)}.json.gz"
+
+    if cache_path.exists() and not refresh:
+        LOG.info("using cached greenspace %s", cache_path.name)
+        with gzip.open(cache_path, "rt", encoding="utf-8") as handle:
+            return json.load(handle)
+
+    west, south, east, north = config.bbox
+    timeout = int(config.osm.get("timeout_s", 180))
+    bbox = f"({south},{west},{north},{east})"
+    leisure = "park|nature_reserve|garden|common|recreation_ground|pitch|golf_course"
+    landuse = "recreation_ground|village_green|forest|meadow|grass|cemetery"
+    natural = "wood|scrub|heath|beach"
+    query = "\n".join(
+        [
+            f"[out:json][timeout:{timeout}];",
+            "(",
+            f'  way["leisure"~"^({leisure})$"]{bbox};',
+            f'  way["landuse"~"^({landuse})$"]{bbox};',
+            f'  way["natural"~"^({natural})$"]{bbox};',
+            ");",
+            "out geom;",
+            "",
+        ]
+    )
+
+    for endpoint in config.osm["overpass_endpoints"]:
+        try:
+            LOG.info("fetching greenspace from %s", endpoint)
+            response = requests.post(
+                endpoint,
+                data={"data": query},
+                headers={"User-Agent": USER_AGENT},
+                timeout=timeout + 60,
+            )
+            if response.status_code == 200:
+                payload = response.json()
+                LOG.info(
+                    "  got %d green areas", len(payload.get("elements", []))
+                )
+                _write_json_gz(cache_path, payload)
+                return payload
+            LOG.warning("  HTTP %d", response.status_code)
+        except (requests.RequestException, ValueError) as error:
+            LOG.warning("  %s: %s", type(error).__name__, error)
+        time.sleep(4.0)
+
+    LOG.warning("greenspace fetch failed; parks will not be rewarded")
+    return None
+
+
 def _write_json_gz(path: Path, payload: dict[str, Any]) -> None:
     """Write JSON gzipped, atomically."""
     tmp_path = path.with_suffix(path.suffix + ".part")

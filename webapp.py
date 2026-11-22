@@ -68,6 +68,7 @@ RATE_LIMIT_REQUESTS = 5
 RATE_LIMIT_WINDOW_S = 300
 
 #: Bounds on what a caller may ask for.
+MAX_SCENIC = 3.0
 MIN_MILES, MAX_MILES = 1.0, 50.0
 MIN_RADIUS_MI, MAX_RADIUS_MI = 1.0, 15.0
 
@@ -279,6 +280,7 @@ def _run_job(job: Job, params: dict[str, Any]) -> None:
             params["miles"],
             out_path,
             start=(params["lat"], params["lon"]),
+            scenic_weight=params.get("scenic", 0.0),
             on_progress=on_progress,
             route_name=f"{job.course_name} replica — {miles_label}",
         )
@@ -311,6 +313,13 @@ def _run_job(job: Job, params: dict[str, Any]) -> None:
             "mean_drift_ft": round(fit.get("mean_drift_ft", 0.0)),
             "max_drift_ft": round(fit.get("max_drift_ft", 0.0)),
             "repeat_pct": round(built.repeat_fraction * 100),
+            "pleasantness": (
+                round(nice, 2)
+                if (nice := built.mean_pleasantness(
+                    getattr(built, "pleasantness_scores", None)
+                )) is not None
+                else None
+            ),
             "closed_loop": built.closed_loop,
             "paved_pct": round(built.surface_fractions.get("paved", 0.0) * 100),
             "streets": built.names[:14],
@@ -383,6 +392,7 @@ def build():
         radius = float(request.form.get("radius", 8))
         miles_raw = request.form.get("miles", "").strip()
         miles = float(miles_raw) if miles_raw else None
+        scenic = float(request.form.get("scenic", 0) or 0)
     except (KeyError, ValueError):
         return jsonify(error="Pick a spot on the map and a distance."), 400
 
@@ -394,6 +404,11 @@ def build():
                 error=f"Search radius must be between {MIN_RADIUS_MI:g} and "
                 f"{MAX_RADIUS_MI:g} miles."
             ),
+            400,
+        )
+    if not (0.0 <= scenic <= MAX_SCENIC):
+        return (
+            jsonify(error=f"Scenic preference must be between 0 and {MAX_SCENIC:g}."),
             400,
         )
     if miles is not None and not (MIN_MILES <= miles <= MAX_MILES):
@@ -425,7 +440,15 @@ def build():
     _record_hit()
     _remember(job)
     _pool.submit(
-        _run_job, job, {"lat": lat, "lon": lon, "radius": radius, "miles": miles}
+        _run_job,
+        job,
+        {
+            "lat": lat,
+            "lon": lon,
+            "radius": radius,
+            "miles": miles,
+            "scenic": scenic,
+        },
     )
     LOG.info("job %s queued (%.4f, %.4f, %.0f mi radius)", job_id, lat, lon, radius)
     return jsonify(job.public()), 202

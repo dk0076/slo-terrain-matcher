@@ -70,6 +70,21 @@
       </p>
     </section>
 
+    <section class="card">
+      <h2><span class="step">4</span> What matters more</h2>
+      <label class="slider-row">
+        <span>Nicer vs closer</span>
+        <input type="range" id="scenic" name="scenic" min="0" max="3" step="0.5" value="0">
+        <output id="scenic-out">Closest match</output>
+      </label>
+      <p class="hint">
+        Turn this up to favour paths, parks and quiet streets over main roads.
+        It is a real trade: on test routes, pushing it to 2 improved
+        pleasantness by a fifth and cost about a third of the profile match.
+        At 0 the route goes wherever the gradients are, traffic and all.
+      </p>
+    </section>
+
     <div class="actions">
       <button type="submit" id="go" disabled>Build my route</button>
       <p class="actions-note" id="go-note">Add a course GPX and pick a spot to continue.</p>

@@ -115,6 +115,36 @@ a distance you can run on a weeknight:
 python replicate.py --course oakland.gpx --area "Boulder, CO" --miles 10
 ```
 
+**Nicer routes, at a cost.** `--scenic` steers the search onto paths, named
+trails and quiet streets and away from arterials, using tags already fetched
+with the road network:
+
+```bash
+python replicate.py --course oakland.gpx --area "San Luis Obispo, CA" --scenic 2
+```
+
+It is off by default because it is a real trade, not a free win. Measured on
+three different routes in San Luis Obispo:
+
+| scenic | profile match | pleasantness |
+|---|---|---|
+| 0 (default) | 0.73 / 0.68 / 0.47 | 0.57 / 0.54 / 0.58 |
+| 2.0 | 0.52 / 0.31 / 0.25 | 0.72 / 0.78 / 0.68 |
+
+Roughly: a fifth more pleasantness for about a third of the profile match.
+Values around 0.5 are not worth it — they cost match without reliably
+improving anything. The score is always reported, even at 0, so you can see
+what you would be trading.
+
+**What the pleasantness score is not.** It rates *what a way is*, not *who
+uses it*. A beautiful empty path and a beloved one score alike. Strava's
+heatmap would answer the second question, but their terms forbid scraping the
+tiles and forbid storing anything derived from their API, so it cannot feed a
+tool that caches by area. OpenStreetMap's public GPS trace layer looks like a
+substitute and is not: it renders traces as opaque lines, so it saturates on
+any road a car has driven — measured against real streets it rated a
+four-lane arterial above a well-used creek path.
+
 **Where you start matters more than you would expect.** The search grows the
 route outward from one node, so the start point decides which terrain is even
 reachable. The same 9-mile replica in the same bounding box scored 0.56
@@ -376,6 +406,7 @@ Dockerfile        for deploying the web version
 config.yaml       bbox, targets, scoring weights, output paths
 config.py         typed configuration loading and validation
 area.py           resolve a place name, centre point or bbox into an area
+pleasant.py       how pleasant each way is to run on, from OSM tags
 chart.py          replica vs course comparison chart (self-contained HTML)
 geo.py            haversine distance, resampling, bearings
 fetch_data.py     3DEP DEM and OSM acquisition, with caching

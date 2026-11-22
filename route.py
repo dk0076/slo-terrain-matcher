@@ -371,6 +371,7 @@ class Route:
     target: CourseTarget
     fit: dict[str, float] = field(default_factory=dict)
     _edge_lengths: dict[int, float] = field(default_factory=dict)
+    pleasantness_scores: dict[int, float] | None = None
 
     @property
     def length_mi(self) -> float:
@@ -382,6 +383,17 @@ class Route:
         """Total climbing in metres."""
         diffs = np.diff(self.elevations)
         return float(diffs[diffs > 0].sum())
+
+    def mean_pleasantness(self, scores: dict[int, float] | None) -> float | None:
+        """Length-weighted average pleasantness of the ways this route uses."""
+        if not scores:
+            return None
+        total = weighted = 0.0
+        for edge_id in self.edge_ids:
+            length = self._edge_lengths.get(edge_id, 0.0)
+            total += length
+            weighted += length * scores.get(edge_id, 0.5)
+        return weighted / total if total > 0 else None
 
     @property
     def repeat_fraction(self) -> float:
@@ -536,6 +548,8 @@ def build_route(
     feature_emphasis: float = 0.6,
     drift_weight: float = 1.0,
     drift_scale_m: float = 10.0,
+    pleasantness: dict[int, float] | None = None,
+    scenic_weight: float = 0.0,
     close_loop: bool = True,
     milestone_m: float = 200.0,
     per_node: int = 2,
@@ -637,6 +651,10 @@ def build_route(
                     step_cost = length * abs(grade - wanted) * emphasis
                     if routable.edge.surface_class == "unpaved":
                         step_cost += length * unpaved_penalty
+
+                    if scenic_weight > 0.0 and pleasantness is not None:
+                        nice = pleasantness.get(edge_id, 0.5)
+                        step_cost += length * scenic_weight * (1.0 - nice)
 
                     rise = routable.rise_m if forward else -routable.rise_m
                     new_elev = beam.elev_m + rise
@@ -799,6 +817,7 @@ def build_routes(
     edges: Sequence[Edge],
     sampler,
     course_profile,
+    pleasantness: dict[int, float] | None = None,
 ) -> list[Route]:
     """Build every route configured under ``routes`` in the config.
 
@@ -807,6 +826,7 @@ def build_routes(
         edges: Edges from :func:`analyze.build_edges`.
         sampler: An open :class:`analyze.DemSampler`.
         course_profile: A :class:`course.CourseProfile`.
+        pleasantness: Optional edge scores from :func:`pleasant.score_network`.
 
     Returns:
         The routes that were successfully built.
@@ -859,6 +879,8 @@ def build_routes(
             unpaved_penalty=float(spec.get("unpaved_penalty", 0.6)),
             feature_emphasis=float(spec.get("feature_emphasis", 0.6)),
             drift_weight=float(spec.get("drift_weight", 1.0)),
+            pleasantness=pleasantness,
+            scenic_weight=float(spec.get("scenic_weight", 0.0)),
             per_node=int(spec.get("per_node", 2)),
             close_loop=bool(spec.get("loop", True)),
         )

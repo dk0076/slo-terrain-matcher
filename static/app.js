@@ -153,6 +153,20 @@ $("radius").addEventListener("input", (event) => {
   drawRing();
 });
 
+const SCENIC_LABELS = {
+  "0": "Closest match",
+  "0.5": "Barely",
+  "1": "A little nicer",
+  "1.5": "Noticeably nicer",
+  "2": "Much nicer",
+  "2.5": "Strongly nicer",
+  "3": "Nicest route",
+};
+
+$("scenic").addEventListener("input", (event) => {
+  $("scenic-out").textContent = SCENIC_LABELS[event.target.value] || event.target.value;
+});
+
 $("miles").addEventListener("input", (event) => {
   $("miles-out").textContent = `${event.target.value} mi`;
 });
@@ -199,6 +213,7 @@ $("form").addEventListener("submit", async (event) => {
   body.append("lat", state.lat);
   body.append("lon", state.lon);
   body.append("radius", $("radius").value);
+  body.append("scenic", $("scenic").value);
   if (!$("full-length").checked) body.append("miles", $("miles").value);
 
   let payload;
@@ -291,6 +306,13 @@ function showResult(id, result) {
     ["Elevation drift", `${result.max_drift_ft} ft`, "worst gap from the course"],
     ["Doubling back", `${result.repeat_pct}%`, "of the distance"],
   ];
+  if (result.pleasantness !== null && result.pleasantness !== undefined) {
+    stats.push([
+      "Pleasantness",
+      `${result.pleasantness}`,
+      "0 arterial, 1 park path",
+    ]);
+  }
   $("stats").innerHTML = stats
     .map(
       ([k, v, sub]) =>

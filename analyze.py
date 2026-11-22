@@ -103,6 +103,15 @@ class Edge:
     end_node: int
     coords: np.ndarray  # (n, 2) of (lon, lat)
     length_m: float
+    # Tags the pleasantness score reads. Kept as the raw strings OSM uses, so
+    # an unexpected value degrades to "unknown" rather than being guessed at.
+    foot_tag: str = ""
+    access_tag: str = ""
+    sidewalk_tag: str = ""
+    lit_tag: str = ""
+    maxspeed_tag: str = ""
+    lanes_tag: str = ""
+    service_tag: str = ""
 
     @property
     def surface_class(self) -> str:
@@ -264,6 +273,15 @@ def build_edges(payload: dict[str, Any]) -> tuple[list[Edge], dict[int, tuple[fl
         bridge = str(tags.get("bridge") or "no").lower() not in {"no", ""}
         tunnel = str(tags.get("tunnel") or "no").lower() not in {"no", ""}
         way_id = int(way.get("id", -1))
+        extra = {
+            "foot_tag": str(tags.get("foot") or "").lower(),
+            "access_tag": str(tags.get("access") or "").lower(),
+            "sidewalk_tag": str(tags.get("sidewalk") or "").lower(),
+            "lit_tag": str(tags.get("lit") or "").lower(),
+            "maxspeed_tag": str(tags.get("maxspeed") or ""),
+            "lanes_tag": str(tags.get("lanes") or ""),
+            "service_tag": str(tags.get("service") or "").lower(),
+        }
 
         # Indices at which to cut the way.
         cuts = [0]
@@ -293,6 +311,7 @@ def build_edges(payload: dict[str, Any]) -> tuple[list[Edge], dict[int, tuple[fl
                     end_node=nodes[right],
                     coords=piece,
                     length_m=length,
+                    **extra,
                 )
             )
             next_id += 1
