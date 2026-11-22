@@ -122,6 +122,17 @@ def main(argv: list[str] | None = None) -> int:
             path = config.output_dir / f"route-{slug}.gpx"
             write_gpx(built, path)
             route_paths.append((built, path))
+            try:
+                from chart import write_profile_comparison
+
+                write_profile_comparison(
+                    built,
+                    profile,
+                    path.with_suffix(".html"),
+                    course_name=Path(config.course_gpx).name,
+                )
+            except ValueError as error:
+                LOG.warning("could not chart %s: %s", built.name, error)
 
     elapsed = time.time() - started
     total = sum(len(matches) for matches in result.matches.values())

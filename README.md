@@ -67,6 +67,14 @@ a distance you can run on a weeknight:
 python replicate.py --course oakland.gpx --area "Boulder, CO" --miles 10
 ```
 
+**Where you start matters more than you would expect.** The search grows the
+route outward from one node, so the start point decides which terrain is even
+reachable. The same 9-mile replica in the same bounding box scored 0.56
+correlation from downtown San Luis Obispo and −0.01 from a point two miles
+south, which lands in an industrial estate with nothing to climb. If a result
+looks poor, try `--start` somewhere with hills in reach before widening the
+search.
+
 **Choosing where**, in order of precision — a place name is geocoded to a
 centre point and `--radius` miles are taken around it (8 by default). Note
 that a geocoder resolves "San Luis Obispo, CA" to the whole *county*, so the
@@ -88,6 +96,12 @@ Other options worth knowing: `--start lat,lon` to begin somewhere other than
 the area centre, `--point-to-point` to skip closing the loop, `--emphasis` to
 change how hard the search chases the course's steep sections, and `--beam`
 to widen the search.
+
+Alongside the GPX it writes an HTML chart comparing the replica to the course
+— grade and cumulative elevation, both against fraction of the way through,
+with the diverging stretches shaded. The summary number tells you *how well*
+the replica matches; the chart tells you *where* it stops matching, which is
+the part you can act on.
 
 **Reading the result.** The summary reports a profile correlation. Above about
 0.7 the replica tracks the course closely; around 0.4–0.7 it follows the shape
@@ -289,6 +303,7 @@ construction.
 config.yaml       bbox, targets, scoring weights, output paths
 config.py         typed configuration loading and validation
 area.py           resolve a place name, centre point or bbox into an area
+chart.py          replica vs course comparison chart (self-contained HTML)
 geo.py            haversine distance, resampling, bearings
 fetch_data.py     3DEP DEM and OSM acquisition, with caching
 analyze.py        edges, corridors, DEM sampling, window search, scoring

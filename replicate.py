@@ -65,8 +65,8 @@ def replicate(
         refresh: Ignore cached downloads.
 
     Returns:
-        The built :class:`route.Route`, or ``None`` if no route could be
-        built.
+        ``(route, chart_path)``. The route is ``None`` if none could be
+        built; the chart path is ``None`` if the chart could not be drawn.
 
     Raises:
         FileNotFoundError: If the course GPX does not exist.
@@ -124,10 +124,21 @@ def replicate(
         length_tolerance=(0.97, 1.03),
     )
     if built is None:
-        return None
+        return None, None
 
     route_module.write_gpx(built, out_path)
-    return built
+
+    from chart import write_profile_comparison
+
+    chart_path = out_path.with_suffix(".html")
+    try:
+        write_profile_comparison(
+            built, profile, chart_path, course_name=course_gpx.name
+        )
+    except ValueError as error:
+        LOG.warning("could not chart the comparison: %s", error)
+        chart_path = None
+    return built, chart_path
 
 
 def print_summary(built, area: Area, course_name: str, out_path: Path) -> None:
@@ -290,7 +301,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     try:
-        built = replicate(
+        built, chart_path = replicate(
             config,
             area,
             course_path,
@@ -320,6 +331,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     print_summary(built, area, course_path.name, out_path)
+    if chart_path is not None:
+        print(f"  chart      {chart_path}")
     LOG.info("done in %.1fs", time.time() - started)
     return 0
 
