@@ -46,18 +46,47 @@ FEET_PER_METRE = 3.280839895
 
 @dataclass
 class CourseTarget:
-    """The race course expressed as grade against fraction of the way through."""
+    """The race course expressed as grade against fraction of the way through.
+
+    It also carries the course's own elevation curve. Matching grade alone is
+    not enough: a route can hold the right grade at every point and still end
+    up far below where the course would be, because small errors accumulate.
+    The elevation curve is what lets the search notice that and correct.
+    """
 
     fractions: np.ndarray  # (n,) in [0, 1]
     grades_pct: np.ndarray  # (n,)
     total_m: float
     total_gain_m: float
     window_m: float
+    elev_fractions: np.ndarray = field(default_factory=lambda: np.array([0.0, 1.0]))
+    elev_delta_m: np.ndarray = field(default_factory=lambda: np.array([0.0, 0.0]))
 
     def grade_at(self, fraction: float | np.ndarray) -> np.ndarray:
         """The course's grade at a fractional position along it."""
         return np.interp(
             np.clip(fraction, 0.0, 1.0), self.fractions, self.grades_pct
+        )
+
+    def elevation_delta_at(
+        self, fraction: float | np.ndarray, length_scale: float = 1.0
+    ) -> np.ndarray:
+        """How far above its start the course is, at a fractional position.
+
+        Args:
+            fraction: Position along the course, 0 to 1.
+            length_scale: Ratio of the replica's length to the course's.
+                Elevation scales with it, which is what keeps the grades the
+                same when the course is compressed into a shorter route.
+
+        Returns:
+            Metres above the start.
+        """
+        return (
+            np.interp(
+                np.clip(fraction, 0.0, 1.0), self.elev_fractions, self.elev_delta_m
+            )
+            * length_scale
         )
 
     def gain_for_length(self, length_m: float) -> float:
@@ -100,6 +129,10 @@ def course_target(
     diffs = np.diff(elev)
     gain = float(diffs[diffs > 0].sum())
 
+    # The course's own elevation curve, relative to its start.
+    elev_fractions = dist / total
+    elev_delta = elev - elev[0]
+
     LOG.info(
         "course target: %.2f mi, %.0f ft gain, grade %.2f%% to %+.2f%%",
         geo.metres_to_miles(total),
@@ -113,6 +146,8 @@ def course_target(
         total_m=total,
         total_gain_m=gain,
         window_m=window_m,
+        elev_fractions=elev_fractions,
+        elev_delta_m=elev_delta,
     )
 
 
@@ -416,6 +451,16 @@ def score_fit(route: Route) -> dict[str, float]:
     expected_gain = target.gain_for_length(float(route.dist_m[-1]))
     actual_gain = route.gain_m
 
+    # Cumulative drift: how far the route sits from where the course would be
+    # at the same fraction. Grade error is local and can look fine while this
+    # grows without bound.
+    total_m = float(route.dist_m[-1])
+    length_scale = total_m / target.total_m
+    route_fracs = route.dist_m / total_m
+    route_delta = route.elevations - route.elevations[0]
+    wanted_delta = target.elevation_delta_at(route_fracs, length_scale)
+    drift = route_delta - wanted_delta
+
     return {
         "grade_mae_pct": float(np.mean(np.abs(differences))),
         "grade_rmse_pct": float(np.sqrt(np.mean(differences**2))),
@@ -432,6 +477,8 @@ def score_fit(route: Route) -> dict[str, float]:
         "steepest_descent_pct": float(np.min(grades)) if grades.size else 0.0,
         "course_steepest_climb_pct": float(np.max(target.grades_pct)),
         "course_steepest_descent_pct": float(np.min(target.grades_pct)),
+        "mean_drift_ft": float(np.mean(np.abs(drift))) * FEET_PER_METRE,
+        "max_drift_ft": float(np.max(np.abs(drift))) * FEET_PER_METRE,
     }
 
 
@@ -449,6 +496,7 @@ class _Beam:
     cost: float
     edges: tuple[tuple[int, bool], ...]  # (edge_id, forward)
     recent: tuple[int, ...]
+    elev_m: float = 0.0  # cumulative elevation change since the start
 
 
 def _prune(
@@ -483,9 +531,11 @@ def build_route(
     *,
     name: str = "route",
     beam_width: int = 220,
-    recent_memory: int = 80,
+    recent_memory: int = 250,
     unpaved_penalty: float = 0.6,
     feature_emphasis: float = 0.6,
+    drift_weight: float = 1.0,
+    drift_scale_m: float = 10.0,
     close_loop: bool = True,
     milestone_m: float = 200.0,
     per_node: int = 2,
@@ -537,6 +587,10 @@ def build_route(
 
     low = target_length_m * length_tolerance[0]
     high = target_length_m * length_tolerance[1]
+    # Elevation scales with length, which is what keeps grades unchanged when
+    # a long course is reproduced over a shorter route.
+    length_scale = target_length_m / target.total_m
+    drift_divisor = max(1e-6, drift_scale_m)
 
     beams = [_Beam(start_node, 0.0, 0.0, (), ())]
     best: tuple[float, _Beam] | None = None
@@ -580,6 +634,20 @@ def build_route(
                     if routable.edge.surface_class == "unpaved":
                         step_cost += length * unpaved_penalty
 
+                    rise = routable.rise_m if forward else -routable.rise_m
+                    new_elev = beam.elev_m + rise
+                    if drift_weight > 0.0:
+                        fraction_end = (
+                            beam.distance_m + length
+                        ) / target_length_m
+                        wanted_elev = float(
+                            target.elevation_delta_at(fraction_end, length_scale)
+                        )
+                        drift = abs(new_elev - wanted_elev)
+                        step_cost += (
+                            length * drift_weight * (drift / drift_divisor)
+                        )
+
                     grown.append(
                         _Beam(
                             node=neighbour,
@@ -587,6 +655,7 @@ def build_route(
                             cost=beam.cost + step_cost,
                             edges=beam.edges + ((edge_id, forward),),
                             recent=(beam.recent + (edge_id,))[-recent_memory:],
+                            elev_m=new_elev,
                         )
                     )
             if not grown:
@@ -779,9 +848,10 @@ def build_routes(
             start_node,
             name=str(spec.get("label", spec.get("key", "route"))),
             beam_width=int(spec.get("beam_width", 220)),
-            recent_memory=int(spec.get("recent_memory", 80)),
+            recent_memory=int(spec.get("recent_memory", 250)),
             unpaved_penalty=float(spec.get("unpaved_penalty", 0.6)),
             feature_emphasis=float(spec.get("feature_emphasis", 0.6)),
+            drift_weight=float(spec.get("drift_weight", 1.0)),
             per_node=int(spec.get("per_node", 2)),
             close_loop=bool(spec.get("loop", True)),
         )

@@ -44,6 +44,8 @@ def replicate(
     emphasis: float = 0.6,
     per_node: int = 3,
     unpaved_penalty: float = 0.9,
+    drift_weight: float = 1.0,
+    recent_memory: int | None = None,
     point_to_point: bool = False,
     start: tuple[float, float] | None = None,
     refresh: bool = False,
@@ -60,6 +62,11 @@ def replicate(
         emphasis: How hard to chase the course's steep sections.
         per_node: Beam diversity cap.
         unpaved_penalty: Extra cost per metre of known-unpaved surface.
+        drift_weight: How hard to hold the replica to the course's own
+            elevation curve. 0 disables the correction.
+        recent_memory: How many recent edges the search refuses to reuse.
+            ``None`` scales it with the distance: a long route inside a small
+            area has to lap, so it needs a shorter memory than a short one.
         point_to_point: Do not close the route back to the start.
         start: Optional ``(latitude, longitude)`` start point.
         refresh: Ignore cached downloads.
@@ -107,6 +114,13 @@ def replicate(
     start_lat, start_lon = start if start else area.center
     start_node = graph.nearest_node(start_lat, start_lon)
 
+    if recent_memory is None:
+        # 250 suits a route of a dozen miles or so. A longer route in the same
+        # area must reuse roads, so the memory shortens in proportion rather
+        # than making the search impossible.
+        recent_memory = int(max(60, min(250, 250 * (12.0 / max(1.0, target_miles)))))
+        LOG.info("route memory: %d edges", recent_memory)
+
     LOG.info("--- 4/4: searching for the closest replica ---")
     name = f"{course_gpx.stem} replica — {target_miles:g} mi"
     built = route_module.build_route(
@@ -116,10 +130,11 @@ def replicate(
         start_node,
         name=name,
         beam_width=beam,
-        recent_memory=150,
+        recent_memory=recent_memory,
         unpaved_penalty=unpaved_penalty,
         feature_emphasis=emphasis,
         per_node=per_node,
+        drift_weight=drift_weight,
         close_loop=not point_to_point,
         length_tolerance=(0.97, 1.03),
     )
@@ -172,6 +187,11 @@ def print_summary(built, area: Area, course_name: str, out_path: Path) -> None:
     )
     print(
         f"  grade error       {fit.get('grade_mae_pct', 0):.2f} percentage points"
+    )
+    print(
+        f"  elevation drift   {fit.get('mean_drift_ft', 0):.0f} ft average, "
+        f"{fit.get('max_drift_ft', 0):.0f} ft worst  "
+        "(how far from the course's own height)"
     )
 
     correlation = fit.get("grade_correlation", float("nan"))
@@ -251,6 +271,24 @@ def main(argv: list[str] | None = None) -> int:
     tuning.add_argument(
         "--unpaved-penalty", type=float, default=0.9, help="cost per metre of dirt"
     )
+    tuning.add_argument(
+        "--memory",
+        type=int,
+        default=None,
+        help=(
+            "edges the search refuses to reuse; higher means less doubling "
+            "back. Defaults to scaling with the distance"
+        ),
+    )
+    tuning.add_argument(
+        "--drift",
+        type=float,
+        default=1.0,
+        help=(
+            "how hard to hold the replica to the course's elevation curve; "
+            "0 disables it"
+        ),
+    )
 
     parser.add_argument("--out", default=None, help="output .gpx path")
     parser.add_argument("--config", default=None, help="path to config.yaml")
@@ -311,6 +349,8 @@ def main(argv: list[str] | None = None) -> int:
             emphasis=args.emphasis,
             per_node=args.per_node,
             unpaved_penalty=args.unpaved_penalty,
+            drift_weight=args.drift,
+            recent_memory=args.memory,
             point_to_point=args.point_to_point,
             start=start,
             refresh=args.refresh,

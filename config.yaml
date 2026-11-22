@@ -191,9 +191,15 @@ routes:
     # terrain). Wider costs roughly twice the search time, which is worth it.
     beam_width: 600
     per_node: 3
-    recent_memory: 60     # laps of a flat corridor are expected at this length
+    recent_memory: 110    # laps of a flat corridor are expected at this length
     unpaved_penalty: 0.6
     feature_emphasis: 0.6
+    # Hold the route to the course's own elevation curve. Matching grade
+    # locally still lets error accumulate: without this the SLO 9-miler drifted
+    # 71 ft below the course at its worst. At 1.0 that falls to 36 ft and the
+    # grade match improves too, because staying near the course's height stops
+    # the search wandering downhill into climbs it then has to make up.
+    drift_weight: 1.0
     color: "#6a3d9a"
 
   - key: signature_loop
@@ -202,7 +208,8 @@ routes:
     loop: true
     beam_width: 600
     per_node: 3
-    recent_memory: 140    # a short loop should not retrace itself
+    recent_memory: 250    # a short loop should not retrace itself
     unpaved_penalty: 0.9
     feature_emphasis: 0.6
+    drift_weight: 1.0
     color: "#ff7f00"

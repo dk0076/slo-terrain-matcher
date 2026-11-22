@@ -103,6 +103,20 @@ with the diverging stretches shaded. The summary number tells you *how well*
 the replica matches; the chart tells you *where* it stops matching, which is
 the part you can act on.
 
+**Elevation drift** is reported alongside the grade error, and it measures
+something the grade error cannot. Grade is local: a replica can hold a
+plausible grade at every single point and still end up far from where the
+course would be, because small errors accumulate in one direction. The search
+therefore also tracks the course's own elevation curve and penalises departing
+from it (`--drift`, 0 to disable). On the SLO nine-miler that took the worst
+departure from 71 ft to 31 ft — and improved the grade match at the same
+time, from 0.56 correlation to 0.73, because a route held near the course's
+height stops wandering downhill into climbs it then has to make up.
+
+Note that a constant offset is not drift. A replica that runs 500 ft up a
+hillside is faithful if it rises and falls like the course does; both series
+are measured from their own start.
+
 **Reading the result.** The summary reports a profile correlation. Above about
 0.7 the replica tracks the course closely; around 0.4–0.7 it follows the shape
 loosely; below about 0.15 the local terrain simply does not offer a match and
@@ -268,6 +282,13 @@ widen that target's `grade_pct` or `length_mi`.
 - **Loopability is approximate.** It asks whether a return route exists between
   the segment's endpoints that avoids the segment itself and is no more than 3×
   its length. It does not check that the return is pleasant, or legal, or open.
+- **Repetition trades against fidelity.** Holding a replica to the course's
+  elevation makes re-running the same streets attractive, so `--memory` sets
+  how many recent roads the search refuses to reuse. Higher means less
+  doubling back but a looser match: on the SLO nine-miler, 250 gave 0.73
+  correlation with 14% of the distance repeated, while 400 cut repetition to
+  5% but dropped the match to 0.64. The default scales with distance, since a
+  long route inside a small area has no choice but to lap.
 - **Corridors follow geometry, not intent.** A corridor can run through a gate
   or onto private land. Check anything before committing to it as a workout.
 
